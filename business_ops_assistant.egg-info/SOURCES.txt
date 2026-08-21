@@ -1,0 +1,9 @@
+pyproject.toml
+business_ops_assistant.egg-info/PKG-INFO
+business_ops_assistant.egg-info/SOURCES.txt
+business_ops_assistant.egg-info/dependency_links.txt
+business_ops_assistant.egg-info/top_level.txt
+models/__init__.py
+models/local.py
+models/remote.py
+test/test.py

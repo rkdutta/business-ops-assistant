@@ -1,0 +1,85 @@
+What it does
+
+An assistant that helps run day-to-day operations for a small business: answering questions about customers/suppliers, tracking invoices and payments, drafting communications, and flagging issues (overdue invoices, low stock from a supplier, etc.). Start with fake/sample data (CSV or SQLite) — no real accounting software integration needed.
+
+Feature plan mapped to each dimension
+
+Tools
+
+search_customers(query), get_customer_details(id)
+search_suppliers(query), get_supplier_details(id)
+list_invoices(status, customer_id), get_invoice(id)
+create_invoice(...), mark_invoice_paid(id)
+send_reminder_email(customer_id, invoice_id)
+get_overdue_invoices()
+
+Subagents
+
+Billing agent — invoices, payments, overdue tracking, reminders
+Customer agent — customer lookups, history, communication drafting
+Supplier agent — supplier info, orders, purchase tracking
+
+Router
+
+Classify request → billing / customer / supplier / general, and handle multi-domain asks ("email all customers with overdue invoices" touches billing + customer)
+
+RAG
+
+Index past correspondence, contracts, or notes about customers/suppliers so the agent can answer "what did we agree with Supplier X on payment terms?"
+
+Short-term memory
+
+Session state — "mark that one as paid" refers to the invoice just discussed
+
+Long-term memory
+
+Remember business-specific facts/preferences over time: "always CC accounts@ on invoice emails," recurring patterns per customer (late payer, big client, etc.)
+
+Human-in-the-loop
+
+Any money-related or outbound-communication action — creating an invoice, marking paid, sending a reminder/email — pauses for your approval before executing. This is the most natural and important HITL point in this whole project.
+
+Sandboxing
+
+If you let the agent run analysis scripts (e.g. "calculate total revenue by month from this CSV"), run that in an isolated sandbox rather than directly against your live data
+
+Event streaming
+
+Stream tool-call progress to the UI: "Looking up customer... found 3 overdue invoices... drafting reminder..."
+
+Chat UI
+
+Chat interface with a pending-approvals panel (drafts awaiting your sign-off) — this mirrors what a real internal tool would need
+
+Runtime
+
+Start with SQLite for customers/suppliers/invoices → in-memory checkpointing → persisted checkpointing → think about scheduled/background runs (e.g. daily overdue-invoice check)
+
+Guardrails
+
+Never invent numbers — all financial figures must come from tool calls, not the model's imagination
+Never send an email or mark something paid without explicit confirmation
+PII/financial data scrubbing before logging
+Validate tool inputs (e.g. reject an invoice with a negative amount)
+
+Context engineering
+
+Deciding how much invoice/customer history to include per query, summarizing long customer histories, merging RAG results (past emails) + structured DB lookups into one coherent context
+
+Skills
+
+overdue_followup_skill — prompt + get_overdue_invoices + send_reminder_email + tone/template conventions
+new_invoice_skill — prompt + create_invoice + validation rules
+customer_summary_skill — prompt + RAG over correspondence + get_customer_details
+Phased build order
+Phase 0 — One agent, one tool: search_customers over a small fake CSV/SQLite table. Terminal chat loop.
+Phase 1 — Add short-term memory + simple chat UI (Streamlit).
+Phase 2 — Add invoices data + billing tools (list_invoices, get_overdue_invoices).
+Phase 3 — Add RAG over sample customer/supplier correspondence.
+Phase 4 — Add event streaming to the UI.
+Phase 5 — Add router + split into Billing / Customer / Supplier subagents.
+Phase 6 — Add long-term memory (business preferences, customer patterns).
+Phase 7 — Add human-in-the-loop for invoice creation/payment/email sending — this is the centerpiece feature for this domain.
+Phase 8 — Add sandboxing for any analysis/reporting scripts.
+Phase 9 — Add guardrails (no invented numbers, confirmation rules, input validation).
+Phase 10 — Harden runtime (persisted DB + checkpoints, scheduled overdue-check job, observability).

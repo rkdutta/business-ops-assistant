@@ -1,0 +1,15 @@
+deepagents
+langchain-ollama
+ddgs
+langsmith[sandbox]
+langchain_core
+langchain_openai
+pydantic
+langchain
+faiss-cpu
+langchain-faiss
+langchain-chroma
+langchain-text-splitters
+langchain_ollama
+streamlit
+langchain-mcp-adapters

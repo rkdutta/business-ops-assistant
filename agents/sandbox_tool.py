@@ -106,14 +106,15 @@ def run_analysis_script(tables: list[str], script: str) -> str:
     sqlite_execute already handles. Print the result — only the script's
     stdout is returned. The container has no network access, capped
     CPU/memory, and a 15-second timeout."""
+    if not any(t in ALLOWED_TABLES for t in tables):
+        return f"No valid tables requested — choose from {sorted(ALLOWED_TABLES)}."
+
     image_error = _ensure_image()
     if image_error:
         return image_error
 
     with _scratch_dir() as tmp_path:
         snapshotted = _snapshot_tables(tables, tmp_path)
-        if not snapshotted:
-            return f"No valid tables requested — choose from {sorted(ALLOWED_TABLES)}."
 
         script_path = tmp_path / "analysis.py"
         script_path.write_text(script)

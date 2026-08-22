@@ -15,3 +15,5 @@ streamlit
 langchain-mcp-adapters
 langgraph-checkpoint-sqlite
 pandas
+agentevals
+pytest

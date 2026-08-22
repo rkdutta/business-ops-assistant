@@ -106,8 +106,18 @@ if user_input:
 
     with st.chat_message("assistant"):
         config = {"configurable": {"thread_id": st.session_state.thread_id}}
-        response = chatbot.invoke({"messages": [HumanMessage(content=user_input)]}, config=config)
-        ai_message = response.get("messages")[-1].content
+        ai_message = None
+        with st.status("Working...", expanded=True) as status:
+            for mode, chunk in chatbot.stream(
+                {"messages": [HumanMessage(content=user_input)]},
+                config=config,
+                stream_mode=["custom", "updates"],
+            ):
+                if mode == "custom":
+                    status.write(chunk)
+                else:
+                    ai_message = chunk["chat_node"]["messages"][-1].content
+            status.update(label="Done", state="complete", expanded=False)
         st.markdown(ai_message)
     st.session_state["messages_history"].append({"role": "assistant", "content": ai_message})
     if get_pending_approval(st.session_state.thread_id):

@@ -62,6 +62,8 @@ def create_invoice(customer_id: int, amount: float, due_date: str) -> str:
 @tool
 def mark_invoice_paid(invoice_id: int) -> str:
     """Mark an existing invoice as paid."""
+    if invoice_id <= 0:
+        return "Invoice id must be positive — nothing marked paid."
     conn = sqlite3.connect(DB_PATH)
     row = conn.execute(
         "SELECT customer_id, amount, status FROM invoices WHERE id = ?", (invoice_id,)
@@ -82,6 +84,8 @@ def mark_invoice_paid(invoice_id: int) -> str:
 def send_reminder_email(customer_id: int, subject: str, body: str) -> str:
     """Send a payment reminder (or other) email to a customer. Simulated —
     no real email is sent; it's logged as sent for this demo."""
+    if not subject.strip() or not body.strip():
+        return "Subject and body must not be empty — email not sent."
     conn = sqlite3.connect(DB_PATH)
     _ensure_sent_emails_table(conn)
     customer = conn.execute(

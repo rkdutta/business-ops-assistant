@@ -1,23 +1,29 @@
 import asyncio
 import json
+import queue
 import sqlite3
 import threading
 from pathlib import Path
 from typing import Annotated, TypedDict
 
 import aiosqlite
-from deepagents import SubAgent, create_deep_agent
+from deepagents import FilesystemPermission, SubAgent, create_deep_agent
+from deepagents.backends.filesystem import FilesystemBackend
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.types import Command
 
+from agents.context_tool import get_customer_context, get_supplier_context
+from agents.logging_utils import scrub_args, tool_call_logger
 from agents.memory_tool import recall_facts, remember_fact
 from agents.rag_tool import search_correspondence
+from agents.sandbox_tool import run_analysis_script
 from agents.write_tools import create_invoice, mark_invoice_paid, send_reminder_email
 from models.llm import llm as LLM
 
@@ -85,6 +91,9 @@ mcp_tools = _run_async(_mcp_client.get_tools())
 all_tools = [
     *mcp_tools,
     search_correspondence,
+    get_customer_context,
+    get_supplier_context,
+    run_analysis_script,
     remember_fact,
     recall_facts,
     create_invoice,
@@ -141,15 +150,25 @@ _TOOL_USAGE = (
     "first to see the schema, then sqlite_execute() with a read-only SQL query. "
     "For questions about agreed terms, past correspondence, or notes (e.g. "
     "payment terms, delivery arrangements, discounts agreed with someone), use "
-    "search_correspondence instead. Before drafting a communication or acting "
+    "search_correspondence instead. For computation over data — totals by "
+    "month, aggregates, trends, anything a CSV-style analysis script would "
+    "do — use run_analysis_script instead of sqlite_execute; it runs "
+    "against an isolated snapshot rather than the live database. When you "
+    "need a rounded picture of one "
+    "specific customer or supplier — history plus correspondence together, "
+    "not just a single fact — call get_customer_context or "
+    "get_supplier_context instead of separate sqlite_execute and "
+    "search_correspondence calls; it returns both already merged, with long "
+    "histories capped and summarized rather than dumped in full. Before drafting a communication or acting "
     "on a specific customer/supplier, call recall_facts (scope='global', and "
     "scope='customer'/'supplier' with entity_name for that specific one) to "
     "check standing preferences and known patterns — e.g. always CC accounts@ "
     "on invoice emails, or a customer being a frequent late payer. When the "
     "user states a new lasting preference or you notice a recurring pattern "
     "(not a one-off instruction), call remember_fact to save it for future "
-    "conversations. Only state facts that come from tool results — never "
-    "invent data."
+    "conversations. Only state facts — especially financial figures like "
+    "amounts, balances, and totals — that come from tool results. Never "
+    "invent or estimate a number the tools didn't return."
 )
 
 billing_agent: SubAgent = {
@@ -167,6 +186,15 @@ billing_agent: SubAgent = {
     ),
 }
 
+# Filesystem backend for the skills library, scoped to skills/ only (not the
+# repo root) — even though FilesystemBackend blocks path traversal outside
+# root_dir regardless, pointing root_dir at the whole repo would still hand
+# the agent's filesystem tools (read_file/write_file/ls/...) access to
+# business_ops.db and source code for no reason. Scoping root_dir itself to
+# skills/ means there's nothing outside skills/ to reach in the first place.
+_skills_backend = FilesystemBackend(root_dir=_repo_root / "skills")
+_skills_readonly = [FilesystemPermission(operations=["write"], paths=["/**"], mode="deny")]
+
 customer_agent: SubAgent = {
     "name": "customer_agent",
     "description": (
@@ -179,6 +207,11 @@ customer_agent: SubAgent = {
         "You handle customer information and communication drafting using the "
         f"customers table. {_TOOL_USAGE}"
     ),
+    # customer-summary skill: prompt + get_customer_context (merged
+    # get_customer_details + RAG over correspondence) for "summarize this
+    # customer"-style requests. See skills/customer-summary/SKILL.md.
+    "skills": [("/", "Business Ops")],
+    "permissions": _skills_readonly,
 }
 
 supplier_agent: SubAgent = {
@@ -206,6 +239,8 @@ agent = create_deep_agent(
     model=model,
     tools=all_tools,
     subagents=[billing_agent, customer_agent, supplier_agent],
+    backend=_skills_backend,
+    permissions=_skills_readonly,
     interrupt_on=interrupt_on,
     checkpointer=inner_checkpointer,
     system_prompt=(
@@ -220,8 +255,10 @@ agent = create_deep_agent(
         "your own tools directly. create_invoice, mark_invoice_paid, and "
         "send_reminder_email will pause for the user's approval automatically "
         "— call them directly when appropriate, don't ask for confirmation "
-        "yourself first. Only state facts that come from tool results — "
-        "never invent customer, invoice, or supplier details."
+        "yourself first. Only state facts — especially financial figures "
+        "like amounts, balances, and totals — that come from tool results. "
+        "Never invent or estimate a number, or any customer, invoice, or "
+        "supplier detail, that the tools didn't return."
     ),
 )
 
@@ -243,6 +280,54 @@ def _run_inner(coro):
     return _run_async(coro)
 
 
+# Friendly progress labels per tool, for event streaming. Falls back to a
+# generic "Calling X..." for anything not listed here (e.g. new tools added
+# later don't need this table updated to still show *something*).
+_PROGRESS_LABELS = {
+    "task": lambda args: f"Delegating to {args.get('subagent_type', 'a specialist agent')}...",
+    "sqlite_get_catalog": lambda args: "Checking the database schema...",
+    "sqlite_execute": lambda args: "Querying the database...",
+    "search_correspondence": lambda args: f"Searching past correspondence for \"{args.get('query', '')}\"...",
+    "get_customer_context": lambda args: f"Pulling full context for {args.get('customer', 'customer')}...",
+    "get_supplier_context": lambda args: f"Pulling full context for {args.get('supplier', 'supplier')}...",
+    "run_analysis_script": lambda args: f"Running analysis on {', '.join(args.get('tables', []))} in an isolated sandbox...",
+    "read_file": lambda args: f"Reading {args.get('file_path', 'a file')}...",
+    "recall_facts": lambda args: "Checking remembered preferences...",
+    "remember_fact": lambda args: "Saving a new preference...",
+    "create_invoice": lambda args: "Preparing to create an invoice...",
+    "mark_invoice_paid": lambda args: f"Preparing to mark invoice #{args.get('invoice_id')} as paid...",
+    "send_reminder_email": lambda args: "Drafting a reminder email...",
+}
+
+
+def _progress_label(tool_name: str, args: dict) -> str:
+    fn = _PROGRESS_LABELS.get(tool_name)
+    if fn is None:
+        return f"Calling {tool_name}..."
+    try:
+        return fn(args)
+    except Exception:
+        return f"Calling {tool_name}..."
+
+
+async def _stream_inner_run(thread_id, new_message, on_progress):
+    """Drains the inner agent's tool-call events (for progress narration) and
+    returns its final StateSnapshot. astream_events' own on_chain_end output
+    doesn't reliably surface a pending interrupt the way ainvoke's return
+    value does, so the definitive final state comes from a follow-up
+    aget_state call once the run has actually finished."""
+    inner_config = _inner_config(thread_id)
+    async for event in agent.astream_events({"messages": [new_message]}, config=inner_config, version="v2"):
+        if event["event"] == "on_tool_start":
+            args = event["data"].get("input", {})
+            # Scrubbed before it ever reaches the logger — the UI-facing
+            # progress label below is built from the unscrubbed args, since
+            # that's shown only to this session's own user, not persisted.
+            tool_call_logger.info("%s(%s)", event["name"], scrub_args(args))
+            on_progress(_progress_label(event["name"], args))
+    return await agent.aget_state(inner_config)
+
+
 def chat_node(state: ChatbotState, config: RunnableConfig) -> ChatbotState:
     # The inner deep agent has its own multi-node graph (model <-> tools loop)
     # and, now, its own checkpointer — so only the newest message needs to be
@@ -251,28 +336,56 @@ def chat_node(state: ChatbotState, config: RunnableConfig) -> ChatbotState:
     thread_id = config["configurable"]["thread_id"]
     new_message = state["messages"][-1]
 
-    response = _run_inner(
-        agent.ainvoke({"messages": [new_message]}, config=_inner_config(thread_id))
-    )
+    # get_stream_writer() must be called on THIS (the outer graph's) thread —
+    # it reads LangGraph's streaming context, which doesn't cross the thread
+    # boundary into the background loop thread the inner run executes on. A
+    # plain thread-safe queue.Queue bridges progress messages back here so
+    # they can be hand-delivered to the writer from the correct thread.
+    writer = get_stream_writer()
+    progress_q: queue.Queue = queue.Queue()
+    SENTINEL = object()
 
-    if "__interrupt__" in response:
-        action_requests = response["__interrupt__"][0].value["action_requests"]
-        summary = "; ".join(
-            f"{a['name']}({', '.join(f'{k}={v!r}' for k, v in a['args'].items())})"
-            for a in action_requests
-        )
-        return {
-            "messages": [
-                AIMessage(
-                    content=(
-                        f"⏸️ Waiting for your approval before: {summary}. "
-                        "Approve or reject in the sidebar to continue."
+    async def runner():
+        try:
+            snapshot = await _stream_inner_run(
+                thread_id, new_message, lambda msg: progress_q.put(msg)
+            )
+            progress_q.put((SENTINEL, snapshot, None))
+        except Exception as e:  # noqa: BLE001 — re-raised on the calling thread below
+            progress_q.put((SENTINEL, None, e))
+
+    future = asyncio.run_coroutine_threadsafe(runner(), _loop)
+
+    while True:
+        item = progress_q.get()
+        if isinstance(item, tuple) and item[0] is SENTINEL:
+            _, snapshot, error = item
+            break
+        writer(item)
+
+    future.result()  # propagate any unexpected exception from runner()
+    if error is not None:
+        raise error
+
+    for task in snapshot.tasks:
+        if task.interrupts:
+            action_requests = task.interrupts[0].value["action_requests"]
+            summary = "; ".join(
+                f"{a['name']}({', '.join(f'{k}={v!r}' for k, v in a['args'].items())})"
+                for a in action_requests
+            )
+            return {
+                "messages": [
+                    AIMessage(
+                        content=(
+                            f"⏸️ Waiting for your approval before: {summary}. "
+                            "Approve or reject in the sidebar to continue."
+                        )
                     )
-                )
-            ]
-        }
+                ]
+            }
 
-    return {"messages": [response["messages"][-1]]}
+    return {"messages": [snapshot.values["messages"][-1]]}
 
 
 def get_pending_approval(thread_id) -> dict | None:

@@ -5,7 +5,7 @@ from pathlib import Path
 import streamlit as st
 from langchain_core.messages import HumanMessage
 
-from agents.business_ops_agent import chatbot
+from agents.business_ops_agent import chatbot, get_pending_approval, resume_pending_action
 
 DB_PATH = Path(__file__).parent.parent / "data" / "business_ops.db"
 
@@ -68,6 +68,25 @@ for tid in st.session_state.chat_threads:
             for msg in messages
         ]
 
+pending = get_pending_approval(st.session_state.thread_id)
+if pending:
+    st.sidebar.header("Pending Approval")
+    for action in pending["action_requests"]:
+        st.sidebar.markdown(f"**{action['name']}**")
+        st.sidebar.json(action["args"])
+
+    # One decision applies to every pending action_request in this batch —
+    # resume_pending_action() applies it to all of them together.
+    col1, col2 = st.sidebar.columns(2)
+    if col1.button("Approve"):
+        result = resume_pending_action(st.session_state.thread_id, "approve")
+        st.session_state["messages_history"].append({"role": "assistant", "content": result})
+        st.rerun()
+    if col2.button("Reject"):
+        result = resume_pending_action(st.session_state.thread_id, "reject")
+        st.session_state["messages_history"].append({"role": "assistant", "content": result})
+        st.rerun()
+
 
 with st.chat_message("assistant"):
     st.markdown("Hello! I'm your business ops assistant. Ask me about a customer.")
@@ -76,7 +95,10 @@ for message in st.session_state["messages_history"]:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-user_input = st.chat_input("Type here...")
+user_input = st.chat_input(
+    "Resolve the pending approval above before continuing..." if pending else "Type here...",
+    disabled=bool(pending),
+)
 if user_input:
     st.session_state["messages_history"].append({"role": "user", "content": user_input})
     with st.chat_message("user"):
@@ -88,3 +110,5 @@ if user_input:
         ai_message = response.get("messages")[-1].content
         st.markdown(ai_message)
     st.session_state["messages_history"].append({"role": "assistant", "content": ai_message})
+    if get_pending_approval(st.session_state.thread_id):
+        st.rerun()

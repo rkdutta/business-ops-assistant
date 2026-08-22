@@ -9,3 +9,14 @@ streamlit.log
 data/chroma_correspondence
 __pycache__/
 *.pyc
+
+# Runtime state — accumulates from actually using the app (invoices
+# created, chat/checkpoint history, tool-call log), not source. Rerun
+# data/seed_data.py for a fresh business_ops.db.
+data/business_ops.db
+data/business_ops.db-shm
+data/business_ops.db-wal
+data/deep_agent_checkpoints.db
+data/deep_agent_checkpoints.db-shm
+data/deep_agent_checkpoints.db-wal
+data/tool_calls.log

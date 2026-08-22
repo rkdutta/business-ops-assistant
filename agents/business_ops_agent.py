@@ -12,6 +12,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
+from agents.memory_tool import recall_facts, remember_fact
 from agents.rag_tool import search_correspondence
 from models.llm import llm as LLM
 
@@ -50,8 +51,10 @@ _mcp_client = MultiServerMCPClient(
 # at import time, rather than re-listing tools on every chat turn.
 mcp_tools = _loop.run_until_complete(_mcp_client.get_tools())
 
-# Structured DB tools (MCP) + semantic search over correspondence (RAG).
-all_tools = [*mcp_tools, search_correspondence]
+# Structured DB tools (MCP) + semantic search over correspondence (RAG) +
+# long-term memory (business preferences/patterns that persist across threads,
+# unlike chat history which is per-thread).
+all_tools = [*mcp_tools, search_correspondence, remember_fact, recall_facts]
 
 # Three domain subagents. None declare their own `tools` — per SubAgent's
 # contract, that means each inherits the main agent's tools (all_tools), so
@@ -62,8 +65,15 @@ _TOOL_USAGE = (
     "first to see the schema, then sqlite_execute() with a read-only SQL query. "
     "For questions about agreed terms, past correspondence, or notes (e.g. "
     "payment terms, delivery arrangements, discounts agreed with someone), use "
-    "search_correspondence instead. Only state facts that come from tool "
-    "results — never invent data."
+    "search_correspondence instead. Before drafting a communication or acting "
+    "on a specific customer/supplier, call recall_facts (scope='global', and "
+    "scope='customer'/'supplier' with entity_name for that specific one) to "
+    "check standing preferences and known patterns — e.g. always CC accounts@ "
+    "on invoice emails, or a customer being a frequent late payer. When the "
+    "user states a new lasting preference or you notice a recurring pattern "
+    "(not a one-off instruction), call remember_fact to save it for future "
+    "conversations. Only state facts that come from tool results — never "
+    "invent data."
 )
 
 billing_agent: SubAgent = {

@@ -5,7 +5,7 @@ import sqlite3
 from pathlib import Path
 from typing import Annotated, TypedDict
 
-from deepagents import create_deep_agent
+from deepagents import SubAgent, create_deep_agent
 from langchain_core.messages import BaseMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -49,17 +49,81 @@ _mcp_client = MultiServerMCPClient(
 # at import time, rather than re-listing tools on every chat turn.
 mcp_tools = _loop.run_until_complete(_mcp_client.get_tools())
 
-# Deep agent gets the MCP server's tools directly — sqlite_get_catalog (schema)
-# and sqlite_execute (read-only SQL) — instead of a hand-written query tool.
+# Three domain subagents. None declare their own `tools` — per SubAgent's
+# contract, that means each inherits the main agent's tools (mcp_tools), so
+# the same generic sqlite_get_catalog/sqlite_execute pair backs all of them;
+# the domain split lives entirely in each system_prompt's table scope.
+_TOOL_USAGE = (
+    "Call sqlite_get_catalog() first to see the schema, then sqlite_execute() "
+    "with a read-only SQL query. Only state facts that come from tool results — "
+    "never invent data."
+)
+
+billing_agent: SubAgent = {
+    "name": "billing_agent",
+    "description": (
+        "Handles invoices, payments, overdue tracking, and payment reminders. "
+        "Delegate to this agent for anything about what a customer owes, has "
+        "paid, or is late on."
+    ),
+    "system_prompt": (
+        "You are the billing agent for a small business operations assistant. "
+        "You handle invoices and payments using the invoices table (joined to "
+        "customers on customer_id when a customer name is needed). "
+        f"{_TOOL_USAGE}"
+    ),
+}
+
+customer_agent: SubAgent = {
+    "name": "customer_agent",
+    "description": (
+        "Handles customer lookups, history, and communication drafting. "
+        "Delegate to this agent for anything about who a customer is, their "
+        "contact details, or drafting a message to them."
+    ),
+    "system_prompt": (
+        "You are the customer agent for a small business operations assistant. "
+        "You handle customer information and communication drafting using the "
+        f"customers table. {_TOOL_USAGE}"
+    ),
+}
+
+supplier_agent: SubAgent = {
+    "name": "supplier_agent",
+    "description": (
+        "Handles supplier info, purchase orders, and order/delivery tracking. "
+        "Delegate to this agent for anything about a supplier or what's been "
+        "ordered from them."
+    ),
+    "system_prompt": (
+        "You are the supplier agent for a small business operations assistant. "
+        "You handle supplier information and purchase orders using the suppliers "
+        "and purchase_orders tables (joined on supplier_id). "
+        f"{_TOOL_USAGE}"
+    ),
+}
+
+# The main agent is the router: it classifies each request and delegates via
+# the task() tool deepagents wires up automatically for `subagents`. It can
+# call more than one subagent in a turn for multi-domain asks (e.g. "email
+# all customers with overdue invoices" needs billing_agent then
+# customer_agent), and answers directly itself for anything that isn't
+# billing/customer/supplier-specific.
 agent = create_deep_agent(
     model=model,
     tools=mcp_tools,
+    subagents=[billing_agent, customer_agent, supplier_agent],
     system_prompt=(
-        "You are a business operations assistant with access to a SQLite database "
-        "via MCP tools. Call sqlite_get_catalog() first to see the available tables "
-        "and columns, then use sqlite_execute() with a read-only SQL query to answer "
-        "the user's question. Only state facts that come from tool results — never "
-        "invent customer, invoice, or supplier details."
+        "You are the router for a business operations assistant. For each "
+        "request, decide whether it belongs to billing_agent (invoices, "
+        "payments, overdue tracking), customer_agent (customer lookups, "
+        "history, communication drafting), or supplier_agent (supplier info, "
+        "purchase orders). Delegate using the task tool. If a request spans "
+        "multiple domains (e.g. 'email all customers with overdue invoices'), "
+        "call the relevant subagents in sequence and combine their results. "
+        "For anything general that doesn't fit those domains, you may use "
+        "your own tools directly. Only state facts that come from tool "
+        "results — never invent customer, invoice, or supplier details."
     ),
 )
 

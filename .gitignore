@@ -6,3 +6,4 @@
 .langgraph_api/
 .venv
 streamlit.log
+data/chroma_correspondence

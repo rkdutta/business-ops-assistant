@@ -12,6 +12,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
+from agents.rag_tool import search_correspondence
 from models.llm import llm as LLM
 
 DB_PATH = Path(__file__).parent.parent / "data" / "business_ops.db"
@@ -49,14 +50,20 @@ _mcp_client = MultiServerMCPClient(
 # at import time, rather than re-listing tools on every chat turn.
 mcp_tools = _loop.run_until_complete(_mcp_client.get_tools())
 
+# Structured DB tools (MCP) + semantic search over correspondence (RAG).
+all_tools = [*mcp_tools, search_correspondence]
+
 # Three domain subagents. None declare their own `tools` — per SubAgent's
-# contract, that means each inherits the main agent's tools (mcp_tools), so
-# the same generic sqlite_get_catalog/sqlite_execute pair backs all of them;
+# contract, that means each inherits the main agent's tools (all_tools), so
+# the same structured-data + correspondence-search tools back all of them;
 # the domain split lives entirely in each system_prompt's table scope.
 _TOOL_USAGE = (
-    "Call sqlite_get_catalog() first to see the schema, then sqlite_execute() "
-    "with a read-only SQL query. Only state facts that come from tool results — "
-    "never invent data."
+    "For structured data (amounts, statuses, dates), call sqlite_get_catalog() "
+    "first to see the schema, then sqlite_execute() with a read-only SQL query. "
+    "For questions about agreed terms, past correspondence, or notes (e.g. "
+    "payment terms, delivery arrangements, discounts agreed with someone), use "
+    "search_correspondence instead. Only state facts that come from tool "
+    "results — never invent data."
 )
 
 billing_agent: SubAgent = {
@@ -111,7 +118,7 @@ supplier_agent: SubAgent = {
 # billing/customer/supplier-specific.
 agent = create_deep_agent(
     model=model,
-    tools=mcp_tools,
+    tools=all_tools,
     subagents=[billing_agent, customer_agent, supplier_agent],
     system_prompt=(
         "You are the router for a business operations assistant. For each "

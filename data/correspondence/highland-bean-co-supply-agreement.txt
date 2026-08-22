@@ -1,0 +1,10 @@
+Entity: Highland Bean Co (supplier)
+Date: 2026-05-12
+Title: Master Supply Agreement - Payment Terms
+
+Per our signed master supply agreement with Highland Bean Co, payment terms
+are net-45 from invoice date. Pricing on green coffee beans is locked for a
+12-month period from the agreement start date; any price changes require 60
+days written notice before taking effect. Minimum order quantity per
+shipment is 500kg. Highland Bean Co has agreed to hold buffer stock of our
+top two varieties (Ethiopia and Colombia) to cover unexpected demand spikes.

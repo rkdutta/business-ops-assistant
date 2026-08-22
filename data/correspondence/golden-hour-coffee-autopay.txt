@@ -1,0 +1,9 @@
+Entity: Golden Hour Coffee Co (customer)
+Date: 2026-08-05
+Title: Email thread - recurring late payments follow-up
+
+Following the second reminder email this year, Golden Hour Coffee Co's owner
+apologized for the repeated late payments and agreed to set up autopay via
+ACH for all future invoices, effective immediately. They asked that we send
+a one-time reminder email 3 days before each autopay date as a courtesy
+during the transition period, for the next two billing cycles.

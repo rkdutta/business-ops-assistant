@@ -1,0 +1,9 @@
+Entity: Cedar & Oak Catering (customer)
+Date: 2026-06-28
+Title: Contract note - holiday season discount
+
+Per our agreement with Cedar & Oak Catering ahead of the holiday season: any
+single order over $3,000 qualifies for a 10% volume discount, applied
+automatically at invoicing. This applies to orders placed between
+November 1 and January 15 each year. Standard net-30 payment terms are
+unaffected by the discount.

@@ -1,0 +1,9 @@
+Entity: Evergreen Grocers (customer)
+Date: 2026-04-03
+Title: Notes - invoicing requirements
+
+Evergreen Grocers requires a valid purchase order (PO) number on every
+invoice or it will be rejected by their accounts payable system and payment
+will be delayed. Their AP department only accepts invoices submitted through
+their vendor portal, not by email. Each of their store locations issues its
+own PO numbers, so confirm which location placed the order before invoicing.

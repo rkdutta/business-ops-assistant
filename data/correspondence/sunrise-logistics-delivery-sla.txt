@@ -1,0 +1,9 @@
+Entity: Sunrise Logistics (supplier)
+Date: 2026-05-30
+Title: Contract note - delivery SLA terms
+
+Sunrise Logistics' delivery SLA requires 48 hours advance notice for any
+large catering order dispatch (defined as orders needing a full pallet or
+more). Standard deliveries are next-business-day. Missed SLA windows on
+their end qualify for a 5% credit on that delivery's freight charge, which
+must be requested within 7 days of the missed delivery.

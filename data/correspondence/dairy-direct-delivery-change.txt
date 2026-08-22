@@ -1,0 +1,9 @@
+Entity: Dairy Direct (supplier)
+Date: 2026-08-01
+Title: Email - delivery day change
+
+Dairy Direct emailed to request moving our weekly delivery from Monday to
+Wednesday going forward, citing a route change on their end. We agreed to
+the switch starting the week of August 10th. They confirmed the 48-hour
+order notice requirement stays the same, just shifted relative to the new
+delivery day (orders now due by end of day Monday instead of Saturday).

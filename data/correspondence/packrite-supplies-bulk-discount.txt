@@ -1,0 +1,9 @@
+Entity: Packrite Supplies (supplier)
+Date: 2026-07-10
+Title: Email - bulk order discount agreement
+
+Packrite Supplies agreed to a 8% discount on cup and packaging orders of 50
+cases or more in a single purchase order, effective for orders placed after
+July 15th. Discount applies automatically on their end when the order
+quantity threshold is met — no promo code or manual request needed on our
+side.

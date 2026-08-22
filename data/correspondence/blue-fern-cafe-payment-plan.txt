@@ -1,0 +1,9 @@
+Entity: Blue Fern Cafe (customer)
+Date: 2026-07-22
+Title: Email thread - payment plan for overdue invoice
+
+Blue Fern Cafe's owner reached out about the overdue invoice from June. They
+requested to split the balance into two installments due to a slow month.
+We agreed: 50% due by end of July, remaining 50% due by end of August, no
+late fee applied given they gave advance notice. They confirmed they'd like
+to keep their biweekly order schedule unchanged in the meantime.

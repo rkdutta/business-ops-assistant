@@ -7,3 +7,5 @@
 .venv
 streamlit.log
 data/chroma_correspondence
+__pycache__/
+*.pyc

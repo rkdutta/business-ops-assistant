@@ -1,9 +1,10 @@
 pyproject.toml
+agents/__init__.py
 business_ops_assistant.egg-info/PKG-INFO
 business_ops_assistant.egg-info/SOURCES.txt
 business_ops_assistant.egg-info/dependency_links.txt
 business_ops_assistant.egg-info/top_level.txt
 models/__init__.py
-models/local.py
-models/remote.py
+models/base.py
+models/llm.py
 test/test.py

@@ -1,0 +1,12 @@
+{
+    "servers": {
+        "business_ops_sqlite": {
+            "command": "uvx",
+            "args": [
+                "--with", "mcp<2",
+                "mcp-sqlite",
+                "data/business_ops.db"
+            ]
+        }
+    }
+}

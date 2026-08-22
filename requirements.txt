@@ -13,3 +13,4 @@ langchain-text-splitters
 langchain_ollama
 streamlit
 langchain-mcp-adapters
+langgraph-checkpoint-sqlite

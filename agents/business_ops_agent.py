@@ -1,12 +1,14 @@
 import asyncio
+import contextvars
 import json
+import sqlite3
 from pathlib import Path
 from typing import Annotated, TypedDict
 
 from deepagents import create_deep_agent
 from langchain_core.messages import BaseMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
-from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
@@ -68,11 +70,23 @@ def chat_node(state: ChatbotState) -> ChatbotState:
     messages = state.get("messages")
     # MCP tools only expose an async interface, so the agent must run via
     # ainvoke; run_until_complete bridges that into this graph's sync node.
-    response = _loop.run_until_complete(agent.ainvoke({"messages": messages}))
+    # LangGraph schedules chat_node inside a captured contextvars.Context, so
+    # the inner agent would otherwise inherit the outer graph's checkpointer
+    # through that context regardless of what config= is passed explicitly
+    # here — the inner agent has no state of its own to persist across turns,
+    # and SqliteSaver doesn't support the async calls it would receive. A
+    # fresh empty Context breaks that inheritance.
+    response = contextvars.Context().run(
+        _loop.run_until_complete, agent.ainvoke({"messages": messages})
+    )
     return {"messages": [response["messages"][-1]]}
 
 
-checkpointer = InMemorySaver()
+# Persisted (not in-memory) so a separate process — the chat-naming controller
+# in chat_name_controller_agent.py — can read the same thread history.
+_checkpoint_conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+checkpointer = SqliteSaver(_checkpoint_conn)
+checkpointer.setup()
 
 # Outer graph: START -> chat_node -> END. Deliberately minimal — its only job
 # is per-thread chat history + checkpointing around the deep agent in chat_node.

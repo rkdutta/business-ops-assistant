@@ -1,9 +1,28 @@
+import sqlite3
 import uuid
+from pathlib import Path
 
 import streamlit as st
 from langchain_core.messages import HumanMessage
 
 from agents.business_ops_agent import chatbot
+
+DB_PATH = Path(__file__).parent.parent / "data" / "business_ops.db"
+
+
+def get_thread_title(thread_id) -> str | None:
+    conn = sqlite3.connect(DB_PATH)
+    # chat_threads is created by chat_name_controller_agent.py, which may not
+    # have run yet on a fresh DB — treat a missing table as "no title yet".
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS chat_threads "
+        "(thread_id TEXT PRIMARY KEY, title TEXT NOT NULL, updated_at TEXT NOT NULL)"
+    )
+    row = conn.execute(
+        "SELECT title FROM chat_threads WHERE thread_id = ?", (str(thread_id),)
+    ).fetchone()
+    conn.close()
+    return row[0] if row else None
 
 
 def reset_chat():
@@ -40,7 +59,8 @@ def init_session_state():
 init_session_state()
 
 for tid in st.session_state.chat_threads:
-    if st.sidebar.button(f"{tid}"):
+    label = get_thread_title(tid) or f"New chat ({str(tid)[:8]})"
+    if st.sidebar.button(label):
         st.session_state.thread_id = tid
         messages = load_conversation(tid)
         st.session_state.messages_history = [

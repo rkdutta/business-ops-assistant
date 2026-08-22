@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Kill any running frontend_agent.py Streamlit process and start a fresh one.
+# Kill any running business_ops_frontend.py Streamlit process and start a fresh one.
 # Needed because Streamlit only auto-reruns the main script on save — it does
-# NOT reload imported local modules like chatbot/backend_agent.py, so a stale
+# NOT reload imported local modules like agents/business_ops_agent.py, so a stale
 # process keeps running old code (and old in-memory checkpoint state) after edits.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-PATTERN="streamlit run chatbot/frontend_agent.py"
+PATTERN="streamlit run chatbot/business_ops_frontend.py"
 LOG_FILE="streamlit.log"
 
 if pgrep -f "$PATTERN" > /dev/null; then
@@ -20,7 +20,7 @@ if pgrep -f "$PATTERN" > /dev/null; then
 fi
 
 echo "Starting Streamlit..."
-nohup .venv/bin/streamlit run chatbot/frontend_agent.py > "$LOG_FILE" 2>&1 &
+nohup .venv/bin/streamlit run chatbot/business_ops_frontend.py > "$LOG_FILE" 2>&1 &
 disown
 
 sleep 1

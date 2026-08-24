@@ -20,3 +20,5 @@ data/deep_agent_checkpoints.db
 data/deep_agent_checkpoints.db-shm
 data/deep_agent_checkpoints.db-wal
 data/tool_calls.log
+
+tmp/
